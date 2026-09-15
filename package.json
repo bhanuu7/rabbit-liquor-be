@@ -4,7 +4,11 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "deploy": "npm run docker:login && npm run docker:build && npm run docker:push",
+    "docker:login": "aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 971671217272.dkr.ecr.us-east-1.amazonaws.com",
+    "docker:build": "docker build --platform linux/amd64 -t rabbit-liquor . && docker tag rabbit-liquor:latest 971671217272.dkr.ecr.us-east-1.amazonaws.com/rabbit-liquor:latest",
+    "docker:push": "docker push 971671217272.dkr.ecr.us-east-1.amazonaws.com/rabbit-liquor:latest"
   },
   "keywords": [],
   "author": "",
@@ -17,6 +21,7 @@
     "nodemailer": "^8.0.5",
     "openid-client": "^6.8.2",
     "pg": "^8.20.0",
+    "qrcode": "^1.5.4",
     "socket.io": "^4.8.3"
   }
 }

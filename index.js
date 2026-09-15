@@ -4,6 +4,7 @@ const cors = require("cors");
 const pool = require("./db");
 const http = require("http");
 const { processRestockNotifications } = require("./services/notifyService");
+const { sendOrderConfirmationEmail } = require("./services/emailService");
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -119,10 +120,9 @@ app.post("/products/update", async (req, res) => {
   }
 });
 app.post("/reserve", async (req, res) => {
-  const { customer_name, phone, email, items, total_price, user_name } =
-    req.body;
+  const { phone, email, items, total_price, user_name } = req.body;
   console.log("payload", req.body);
-  if (!customer_name || !email || !items || items.length === 0) {
+  if (!user_name || !email || !items || items.length === 0) {
     return res.status(400).json({ error: "Invalid payload" });
   }
   const client = await pool.connect();
@@ -157,10 +157,10 @@ app.post("/reserve", async (req, res) => {
 
     // 🧾 Insert order
     const orderResult = await client.query(
-      `INSERT INTO orders (customer_name, email, phone, status, total_amount, user_name)
-       VALUES ($1, $2, $3, 'order_placed', $4, $5)
+      `INSERT INTO orders (user_name, email, status, bill_amount)
+       VALUES ($1, $2, 'order_placed', $3)
        RETURNING id`,
-      [customer_name, email, phone, total_price, user_name],
+      [user_name, email, total_price],
     );
 
     console.log("order result", orderResult);
@@ -197,6 +197,7 @@ app.post("/reserve", async (req, res) => {
     }
 
     await client.query("COMMIT");
+    sendOrderConfirmationEmail(email, items, total_price, orderId);
 
     return res.json({
       success: true,
@@ -233,11 +234,11 @@ app.get("/orders/:orderId", async (req, res) => {
     const query = `
       SELECT 
         o.id AS order_id,
-        o.customer_name,
+        o.user_name,
         o.email,
         o.phone,
         o.status,
-        o.total_amount,
+        o.bill_amount,
         o.created_at,
 
         oi.product_id,
@@ -357,7 +358,7 @@ app.post("/cancel-order/:orderId", async (req, res) => {
     client.release();
   }
 });
-
+// TO DO
 app.post("/complete-order/:orderId", async (req, res) => {
   const { orderId } = req.params;
   const { items } = req.body;
@@ -504,11 +505,11 @@ app.get("/get-user-orders/:userId", async (req, res) => {
     const query = `
       SELECT 
         o.id AS order_id,
-        o.customer_name,
+        o.user_name,
         o.email,
         o.phone,
         o.status,
-        o.total_amount,
+        o.bill_amount,
         o.created_at,
 
         oi.product_id,
@@ -575,6 +576,28 @@ app.get("/notify-requests", async (req, res) => {
     return res.json(result.rows);
   } catch (error) {
     console.error("Error fetching notify requests", error);
+  }
+});
+
+app.post("/notify-request", async (req, res) => {
+  const { product_id, status, email } = req.body;
+  const query = `
+      INSERT INTO notify_requests (product_id, status, email) 
+      VALUES ($1, $2, $3) 
+      RETURNING *;
+    `;
+  const values = [product_id, status, email];
+  try {
+    await pool.query(query, values);
+    return res.json({
+      success: "notify request created successfully",
+    });
+  } catch (error) {
+    console.error("Error while creating notify request", error);
+    return res.status(500).json({
+      message: "Sorry, something went wrong",
+      error: error.error,
+    });
   }
 });
 
